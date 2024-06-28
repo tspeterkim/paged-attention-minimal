@@ -81,7 +81,8 @@ def forward(tokens, start_pos):
         q, k = apply_rotary_emb(q, k, freqs_cis)
         
         # Use flash attention with kv-cache support.
-        y = flash_attn_with_kvcache(q, kv_cache[layer][0], kv_cache[layer][1], k, v, cache_seqlens=start_pos, causal=True)
+        k_cache, v_cache = kv_cache[layer]
+        y = flash_attn_with_kvcache(q, k_cache, v_cache, k, v, cache_seqlens=start_pos, causal=True)
 
         stacked_qkv_attention = y.view(bsz, T, dim)
 

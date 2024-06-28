@@ -82,6 +82,7 @@ def forward(tokens, start_pos):
 
         q, k = apply_rotary_emb(q, k, freqs_cis)
 
+        # Use KV Cache Manager to get paged_kv_cache and (logical) block table
         block_table = cms[layer].get_block_table()
         k_cache_paged, v_cache_paged = cms[layer].get_kv_cache()
         cache_seqlens = torch.where(eos_reached, cms[layer].get_last_pos(), torch.tensor([start_pos]*bsz, dtype=torch.int32, device=device))
@@ -131,6 +132,7 @@ eos_reached = torch.tensor([False] * bsz, device=device)
 input_text_mask = tokens != tokenizer.pad_id
 
 # KV Cache Manager for PagedAttention
+# Flash Attention currently only supports block_sizes of multiples of 256. (https://github.com/Dao-AILab/flash-attention/pull/824)
 block_size = 256
 class CacheManager:
     def __init__(self, tokens, block_size=block_size, batch_size=bsz, n_kv_heads=n_kv_heads, head_dim=head_dim):
@@ -155,6 +157,9 @@ class CacheManager:
                 else:
                     self.block_table[i].append((index, block_size))
 
+    # Returns a free block to allocate more tokens to.
+    # For simplicity, I raise an error when we run out of free blocks.
+    # In the actual implementation, it solves this through scheduling and preemption (see paper)
     def get_free_block(self):
         if len(self.free_blocks) == 0:
             raise Exception('No more free blocks. Implement scheduling and preemption.')
@@ -187,22 +192,24 @@ class CacheManager:
 
     def update(self, eos_reached, input_text_mask):
         for i, (eos, is_prompt) in enumerate(zip(eos_reached, input_text_mask)):
-            if is_prompt:
+            if is_prompt: # if the token is part of the original prompt, we skip
                 continue
-            if eos:
+            if eos: # free the request's blocks since we have generated the complete answer
                 self.free_memory(i)
                 continue
+
+            # Update block table
             old_index, n = self.block_table[i][-1]
-            if n == self.block_size:
+            if n == self.block_size: # allocate new block if necessary
                 new_index = self.get_free_block()
                 self.block_table[i].append((new_index, 1))
-            else:
+            else: # otherwise, just use the next available slot in the block
                 self.block_table[i][-1] = (old_index, n+1)
 
     def get_fragmented_memory_size(self):
         size = 0
         for b in self.block_table.values():
-            _, filled = b[-1]
+            _, filled = b[-1] # only the last block has fragmentation
             size += (self.block_size - filled) * n_kv_heads * head_dim * 2 * 2
         return size
 
@@ -215,7 +222,7 @@ for cur_pos in range(min_prompt_len, max_seq_len):
     next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
     tokens[:, cur_pos] = next_token
 
-    # Update CacheManagers. Increment our filled positions + allocate new block if required.
+    # Update CacheManagers. Increment filled positions + allocate new block if required.
     for layer in range(n_layers):
         cms[layer].update(eos_reached.tolist(), input_text_mask[:, cur_pos].tolist())
 

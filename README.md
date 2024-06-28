@@ -26,7 +26,7 @@ huggingface-cli download meta-llama/Meta-Llama-3-8B-Instruct --include "original
 ### Dependencies
 
 ```bash
-pip install torch # cuda version required
+pip install torch # cuda required
 pip install tiktoken # for the tokenizer
 pip install flash-attn --no-build-isolation # for its paged-attention implementation
 ```
@@ -49,17 +49,26 @@ $ python llama3-naive.py 7
 Fragmented Memory: 7.23 GB (28.46%)
 ```
 Note how ~30% of the entire GPU memory becomes fragmented and unusable. 
-Let's see how using paged-attention changes this.
+Let's see how using paged-attention improves this.
 
 ### Paged-Attention
 
-Note that the batch sizes and the OOMs are specific to the GPU and its total memory available. I use a 4090 which has 24GB.
-If you have more memory available, you will be able to use a larger batch size before you OOM.
-Regardless, the fact that paged-attention will allow you
+With paged-attention, we allocate memory only when we need to when generating tokens. 
+This decreases fragmentation to <1%, and increases maximum batch size by 7X:
+```bash
+$ python llama3-paged.py 49
+...
+--------------------------------------------------
+Fragmented Memory: 0.14 GB (0.57%)
+```
 
-run naive vs paged commands
+Note that these batch sizes are specific to my setup. If you have more GPU memory available, 
+you will be able to use a larger batch size before you OOM.
+Regardless, the fact that paged-attention will allow you to dramatically increase your batch size 
+by decreasing memory fragmentation does not change. 
+The benefit of paged attention will be apparent on any GPU device.
 
-## Tutorial
+## Fun Details
 
 brief intro on paged attention vs vllm.
 
@@ -67,7 +76,8 @@ more detail about kv cache manager
 
 ## Acknowledgements
 
-llama3 repo
-anime llama3
-pagedattention paper
-flash attention
+Thanks to:
+* Meta for the Llama3 [code](https://github.com/meta-llama/llama3) and weights
+* @naklecha for the minimal (and entertaining) Llama3 inference [code](https://github.com/naklecha/llama3-from-scratch)
+* The author's of the PagedAttention [paper](https://arxiv.org/pdf/2309.06180).
+* Tri Dao for the FlashAttention + PagedAttenion [implementation](https://github.com/Dao-AILab/flash-attention).
