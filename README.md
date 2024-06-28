@@ -2,7 +2,7 @@
 
 A minimal PagedAttention Cache Manager. `llama3-paged.py` is a <300 line implementation of:
 * LLama3 batch inference using ShareGPT prompts (`sharegpt-filtered.json`).
-* A cache manager for PagedAttention.
+* A KV cache manager for PagedAttention.
 
 This repo aims to show, minimally, 
 how PagedAttention achieves larger batch sizes and higher request throughput.
@@ -82,13 +82,10 @@ any other requests.
 
 To reduce memory fragmentation and increase request throughput (batch size), PagedAttention offers a non-contiguous 
 KV cache memory management scheme, loosely following [OS paging](https://en.wikipedia.org/wiki/Memory_paging). 
-This ensures that memory fragmentation only occurs at the last assigned block per request: in the diagram below, shaded 
-in red, 3 tokens in Physical Block 3 for request A, and 2 tokens in Physical Block 2 for request B.
+This ensures that memory fragmentation only occurs at the last assigned block per request: in the diagram below, 
+outlined in red, 3 tokens in Physical Block 3 for request A, and 2 tokens in Physical Block 2 for request B.
 
 ![paged-attention](/assets/pagedattention.png)
-
-I highly recommend reading through section 4.3 of the [paper](https://arxiv.org/pdf/2309.0618) for a more detailed
-explanation.
 
 I also found it helpful to think about it in code. Instead of this:
 ```python
@@ -106,6 +103,13 @@ logical blocks to physical blocks e.g. in the diagram above, `block_table` will 
 So who makes these assignments?
 
 ### KV cache manager
+
+This is what I [reimplement](https://github.com/tspeterkim/paged-attention-minimal/blob/main/llama3-paged.py#L134-L224)
+in this repo. I also added a very basic optimization: freeing blocks of finished requests such that the blocks can be 
+used by other unfinished requests. Overall, the cache manager focuses on simplicity at the cost of performance.
+There are design choices that I made that makes the inference latency scale linearly with the number of requests. 
+Shame on me. Please feel free to suggest improvements. In principle, the inference latency should be constant given any
+batch size.
 
 ## Acknowledgements
 
