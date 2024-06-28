@@ -1,6 +1,6 @@
 # paged-attention-minimal
 
-A minimal PagedAttention Cache Manager. `llama3-paged.py` is a <300 line implementation of:
+A minimal PagedAttention cache manager. `llama3-paged.py` is a <300 line implementation of:
 * LLama3 batch inference using ShareGPT prompts (`sharegpt-filtered.json`).
 * A KV cache manager for PagedAttention.
 
@@ -37,7 +37,7 @@ pip install flash-attn --no-build-isolation # for its paged-attention implementa
 ### Naive
 
 Generate responses for 4 requests using the naive method
-(allocating the full max sequence length of the KV cache for each request):
+(pre-allocating the full max sequence length of the KV cache for each request):
 ```bash
 python llama3-naive.py 4
 ```
@@ -56,7 +56,7 @@ Let's see how using PagedAttention improves this.
 
 ### PagedAttention
 
-With paged-attention, we allocate memory only when we need to when generating tokens. 
+With PagedAttention, we allocate memory only when we need to when generating tokens. 
 **This decreases fragmentation to <1%, and increases maximum batch size by 7X for me:**
 ```bash
 $ python llama3-paged.py 49
@@ -106,10 +106,15 @@ So who makes these assignments?
 
 This is what I [reimplement](https://github.com/tspeterkim/paged-attention-minimal/blob/main/llama3-paged.py#L134-L224)
 in this repo. I also added a very basic optimization: freeing blocks of finished requests such that the blocks can be 
-used by other unfinished requests. Overall, the cache manager focuses on simplicity at the cost of performance.
+used by other unfinished requests. Overall, my cache manager focuses on simplicity at the cost of performance.
 There are design choices that I made that makes the inference latency scale linearly with the number of requests. 
 Shame on me. Please feel free to suggest improvements. In principle, the inference latency should be constant given any
 batch size.
+
+To be fair, I made these design choices because it was enough to show the increase in request throughput 
+using PagedAttention in <300 lines. If I made the cache manager more performant, I would probably sacrifice the 
+minimality. However, it is important to note that performance does matter in the end, and is the reason why 8.5K LOC 
+systems like [vLLM](https://github.com/vllm-project/vllm) exist.
 
 ## Acknowledgements
 
