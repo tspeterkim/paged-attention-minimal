@@ -54,7 +54,7 @@ Let's see how using paged-attention improves this.
 ### Paged-Attention
 
 With paged-attention, we allocate memory only when we need to when generating tokens. 
-This decreases fragmentation to <1%, and increases maximum batch size by 7X:
+This decreases fragmentation to <1%, and increases maximum batch size by 7X for me:
 ```bash
 $ python llama3-paged.py 49
 ...

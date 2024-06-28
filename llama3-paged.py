@@ -105,11 +105,11 @@ def forward(tokens, start_pos):
     return tokens
 
 # Load ShareGPT prompts
-with open('sharegpt.json') as f:
+with open('sharegpt-filtered.json') as f:
     sharegpt = json.load(f)
 
 requests = []
-for i in range(100):
+for i in range(len(sharegpt)):
     conversations = sharegpt[i]['conversations']
     if len(conversations) > 0:
         requests.append([{'role': 'user', 'content': sharegpt[i]['conversations'][0]['value']}])
@@ -132,7 +132,7 @@ eos_reached = torch.tensor([False] * bsz, device=device)
 input_text_mask = tokens != tokenizer.pad_id
 
 # KV Cache Manager for PagedAttention
-# Flash Attention currently only supports block_sizes of multiples of 256. (https://github.com/Dao-AILab/flash-attention/pull/824)
+# Flash Attention currently only supports block sizes of multiples of 256. (https://github.com/Dao-AILab/flash-attention/pull/824)
 block_size = 256
 class CacheManager:
     def __init__(self, tokens, block_size=block_size, batch_size=bsz, n_kv_heads=n_kv_heads, head_dim=head_dim):
@@ -140,7 +140,7 @@ class CacheManager:
         self.batch_size = bsz
         self.n_kv_heads = n_kv_heads
         self.head_dim = head_dim
-        self.num_blocks = (max_seq_len // block_size) * 5
+        self.num_blocks = (max_seq_len // block_size) * 5 # TODO: make this dynamic
         self.block_table = {i: [] for i in range(batch_size)}
         self.free_blocks = set(range(self.num_blocks))
         self.k_cache_paged = torch.randn(self.num_blocks, block_size, n_kv_heads, head_dim, device=device, dtype=torch.bfloat16)
@@ -167,6 +167,8 @@ class CacheManager:
         self.free_blocks.remove(index)
         return index
 
+    # Gets the logical block table that PagedAttention uses
+    # TODO: Serial computation makes it slow. Is there a faster way?
     def get_block_table(self):
         max_len = max(len(b) for b in self.block_table.values())
         block_table = [[-1] * max_len for _ in range(self.batch_size)]
@@ -178,10 +180,14 @@ class CacheManager:
     def get_kv_cache(self):
         return self.k_cache_paged, self.v_cache_paged
 
+    # Specific to my KV implementation. Returns the last sequence position given the block table.
     def get_last_pos(self):
         last_pos = [(len(b)-1)*self.block_size + b[len(b)-1][1]-1 for b in self.block_table.values()]
         return torch.tensor(last_pos, dtype=torch.int32, device=device)
 
+    # Frees request's blocks.
+    # Here, I leave one block, and free the rest. This is a limitation imposed by my kv cache implementation.
+    # TODO: Avoid this limitation.
     def free_memory(self, index):
         blocks = self.block_table[index]
         if len(blocks) == 1:
@@ -190,6 +196,8 @@ class CacheManager:
             self.free_blocks.add(i)
         self.block_table[index] = blocks[:1]
 
+    # Updates block table and filled positions.
+    # TODO: Again, pretty slow. Faster parallel way?
     def update(self, eos_reached, input_text_mask):
         for i, (eos, is_prompt) in enumerate(zip(eos_reached, input_text_mask)):
             if is_prompt: # if the token is part of the original prompt, we skip
@@ -198,7 +206,6 @@ class CacheManager:
                 self.free_memory(i)
                 continue
 
-            # Update block table
             old_index, n = self.block_table[i][-1]
             if n == self.block_size: # allocate new block if necessary
                 new_index = self.get_free_block()
