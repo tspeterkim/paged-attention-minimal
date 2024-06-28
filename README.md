@@ -11,13 +11,13 @@ To be clear, this is not a from-scratch implementation of PagedAttention. We'll 
 PagedAttention kernel, but write our own KV cache manager as 
 Tri Dao [suggests](https://github.com/Dao-AILab/flash-attention/issues/660):
 
-![image info](assets/the-primer.png)
+![the-primer](assets/the-primer.png)
 
 ## Prereqs
 
 ### Llama3 Weights
 
-We'll use Llama3-8B-Instruct, so [download](https://github.com/meta-llama/llama3?tab=readme-ov-file#download)
+[Download](https://github.com/meta-llama/llama3?tab=readme-ov-file#download)
 the pretrained weights. Here's one way using the command line, after you `pip install huggingface-hub`:
 
 ```bash
@@ -51,10 +51,10 @@ $ python llama3-naive.py 7
 --------------------------------------------------
 Fragmented Memory: 7.23 GB (28.46%)
 ```
-Note how **~30% of the entire GPU memory becomes fragmented and unusabl**e. 
-Let's see how using paged-attention improves this.
+Note how **~30% of the entire GPU memory becomes fragmented and unusable.**
+Let's see how using PagedAttention improves this.
 
-### Paged-Attention
+### PagedAttention
 
 With paged-attention, we allocate memory only when we need to when generating tokens. 
 **This decreases fragmentation to <1%, and increases maximum batch size by 7X for me:**
@@ -75,7 +75,37 @@ The benefit of paged attention will be apparent on any GPU device.
 
 ### PagedAttention
 
-### KV Cache Manager
+Traditionally, a request's KV cache is 1) stored in contiguous memory space, and 2) pre-allocated with the maximum 
+context length (8192 for Llama3). This results in severe internal memory fragmentation e.g. if a request's actual length
+was generated to be 792 tokens, ~90% (=7400/8192) of the pre-allocated memory is fragmented i.e. unable to be used by 
+any other requests. 
+
+To reduce memory fragmentation and increase request throughput (batch size), PagedAttention offers a non-contiguous 
+KV cache memory management scheme, loosely following [OS paging](https://en.wikipedia.org/wiki/Memory_paging). 
+This ensures that memory fragmentation only occurs at the last assigned block per request: in the diagram below, shaded 
+in red, 3 tokens in Physical Block 3 for request A, and 2 tokens in Physical Block 2 for request B.
+
+![paged-attention](/assets/pagedattention.png)
+
+I highly recommend reading through section 4.3 of the [paper](https://arxiv.org/pdf/2309.0618) for a more detailed
+explanation.
+
+I also found it helpful to think about it in code. Instead of this:
+```python
+y = attn(k_cache=k_cache, v_cache=v_cache, ...)
+```
+PagedAttention does this:
+```python
+y = paged_attn(k_cache=k_cache_paged, v_cache=v_cache_paged, block_table=block_table, ...)
+```
+Unlike `k_cache`, `k_cache_paged` is non-contiguous, and is shared by all requests. Physical blocks 0~8 can be 
+assigned to any request, and this is why we pass in `block_table`, which contains the per-request assignments of the 
+logical blocks to physical blocks e.g. in the diagram above, `block_table` will look something like 
+`{0: [7,1,3], 1: [5,2]}` (0,1 being the indices for request A and B, respectively)
+
+So who makes these assignments?
+
+### KV cache manager
 
 ## Acknowledgements
 
