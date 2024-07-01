@@ -29,7 +29,7 @@ huggingface-cli download meta-llama/Meta-Llama-3-8B-Instruct --include "original
 ```bash
 pip install torch # cuda required
 pip install tiktoken # for the tokenizer
-pip install flash-attn --no-build-isolation # for its paged-attention implementation
+pip install flash-attn --no-build-isolation # for its PagedAttention implementation
 ```
 
 ## Quick Start
@@ -67,9 +67,9 @@ Fragmented Memory: 0.14 GB (0.57%)
 
 Note that these batch sizes are specific to my setup. If you have more GPU memory available, 
 you will be able to use a larger batch size before you OOM.
-Regardless, the fact that paged-attention will allow you to dramatically increase your batch size 
+Regardless, the fact that PagedAttention will allow you to dramatically increase your batch size 
 by decreasing memory fragmentation does not change. 
-The benefit of paged attention will be apparent on any GPU device.
+The benefit of PagedAttention will be apparent on any GPU device.
 
 ## Fun Details
 
