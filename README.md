@@ -122,4 +122,4 @@ Thanks to:
 * Meta for the Llama3 [code](https://github.com/meta-llama/llama3) and weights
 * @naklecha for the minimal (and entertaining) Llama3 inference [code](https://github.com/naklecha/llama3-from-scratch)
 * The author's of the PagedAttention [paper](https://arxiv.org/pdf/2309.06180).
-* Tri Dao for the Flash Attention Repo and it's PagedAttention [implementation](https://github.com/Dao-AILab/flash-attention).
+* Tri Dao for the Flash Attention Repo and its PagedAttention [implementation](https://github.com/Dao-AILab/flash-attention).
